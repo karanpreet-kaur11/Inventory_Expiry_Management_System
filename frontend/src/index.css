@@ -1,0 +1,37 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --font-sans: "Inter", system-ui, "Segoe UI", Roboto, sans-serif;
+}
+
+html, body, #root {
+  height: 100%;
+}
+
+body {
+  @apply bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100;
+}
+
+* {
+  scrollbar-width: thin;
+}
+
+.status-safe {
+  @apply bg-emerald-100 text-emerald-800 dark:bg-emerald-500/15 dark:text-emerald-400;
+}
+.status-expiring30 {
+  @apply bg-yellow-100 text-yellow-800 dark:bg-yellow-500/15 dark:text-yellow-400;
+}
+.status-expiring7 {
+  @apply bg-orange-100 text-orange-800 dark:bg-orange-500/15 dark:text-orange-400;
+}
+.status-expired {
+  @apply bg-red-100 text-red-800 dark:bg-red-500/15 dark:text-red-400;
+}
+
+.dot-safe { @apply bg-emerald-500; }
+.dot-expiring30 { @apply bg-yellow-500; }
+.dot-expiring7 { @apply bg-orange-500; }
+.dot-expired { @apply bg-red-500; }
