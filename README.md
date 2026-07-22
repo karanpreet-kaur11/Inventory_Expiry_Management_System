@@ -55,6 +55,30 @@ cd frontend && npm run build   # outputs frontend/dist
 cd backend && npm start        # serve the API; put dist behind any static host/reverse proxy
 ```
 
+## Deploying (public URL, works on any device including mobile)
+
+The backend and frontend deploy as two separate services.
+
+### 1. Backend → Render
+
+1. Sign in to [render.com](https://render.com) with GitHub and grant it access to this repo.
+2. **New +** → **Web Service** → select this repo.
+3. Set **Root Directory** to `backend`.
+4. **Build Command:** `npm install`. **Start Command:** `npm start`.
+5. Deploy. Note the resulting URL, e.g. `https://your-backend.onrender.com`.
+6. Verify it's up: open `https://your-backend.onrender.com/api/health` — should return `{"status":"ok"}`.
+
+   > Free-tier Render services use an ephemeral filesystem, so the SQLite file resets on every restart/redeploy. For data that persists, use a paid instance with a mounted Persistent Disk (mount path `/opt/render/project/src/backend/data`), or switch to Railway/Fly.io with a volume.
+
+### 2. Frontend → Vercel (or Netlify)
+
+1. Sign in to [vercel.com](https://vercel.com) with GitHub and import this repo.
+2. Set **Root Directory** to `frontend`. Framework preset (Vite) is auto-detected.
+3. Add an environment variable: `VITE_API_BASE_URL` = `https://your-backend.onrender.com` (the URL from step 1, no trailing slash).
+4. Deploy. You'll get a URL like `https://your-app.vercel.app`.
+
+Open that URL from any browser — desktop or phone. On mobile, use "Add to Home Screen" from the browser's share menu for an app-like icon; this is not a full installable PWA (see Roadmap) but works well as a bookmarked web app.
+
 ## Project Structure
 
 ```
