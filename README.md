@@ -11,6 +11,7 @@ A full-stack web app for tracking product expiry dates — built for pharmacies,
 
 ## Features
 
+- Multi-user accounts — each person signs up/logs in and only ever sees their own products; nothing is shared between accounts
 - Add/edit products with a smart expiry calculator (days, weeks, months, years, or an exact date)
 - Dashboard with live stat cards (total, expiring today/tomorrow/7d/30d, expired, safe) plus a status pie chart and a 12-month upcoming-expiry bar chart
 - Monthly calendar view — click any day to see every product expiring that day with full details
@@ -37,6 +38,14 @@ npm start        # http://localhost:4000
 ```
 
 Data is stored in `backend/data/inventory.db` (SQLite, created automatically on first run).
+
+Set a `JWT_SECRET` environment variable to sign login sessions. In local development a fixed insecure fallback is used automatically (with a console warning) — set a real, random secret before deploying anywhere:
+
+```bash
+JWT_SECRET=$(openssl rand -hex 32) npm start
+```
+
+In production (`NODE_ENV=production`) the server refuses to start without an explicit `JWT_SECRET`.
 
 ### Frontend
 
@@ -65,8 +74,9 @@ The backend and frontend deploy as two separate services.
 2. **New +** → **Web Service** → select this repo.
 3. Set **Root Directory** to `backend`.
 4. **Build Command:** `npm install`. **Start Command:** `npm start`.
-5. Deploy. Note the resulting URL, e.g. `https://your-backend.onrender.com`.
-6. Verify it's up: open `https://your-backend.onrender.com/api/health` — should return `{"status":"ok"}`.
+5. Add environment variables: `NODE_ENV=production` and `JWT_SECRET=<a long random string>` (e.g. generate one with `openssl rand -hex 32`). Without this, login sessions aren't secure/won't persist correctly across a real deployment.
+6. Deploy. Note the resulting URL, e.g. `https://your-backend.onrender.com`.
+7. Verify it's up: open `https://your-backend.onrender.com/api/health` — should return `{"status":"ok"}`.
 
    > Free-tier Render services use an ephemeral filesystem, so the SQLite file resets on every restart/redeploy. For data that persists, use a paid instance with a mounted Persistent Disk (mount path `/opt/render/project/src/backend/data`), or switch to Railway/Fly.io with a volume.
 
@@ -84,17 +94,20 @@ Open that URL from any browser — desktop or phone. On mobile, use "Add to Home
 ```
 backend/
   src/
-    db.js              SQLite schema/connection
-    index.js           Express app entrypoint
-    routes/products.js  CRUD + bulk + archive/restore endpoints
-    utils/expiry.js     Expiry date calculation & status logic
+    db.js                  SQLite schema/connection (users + products)
+    index.js               Express app entrypoint
+    middleware/requireAuth.js  Verifies the session cookie, attaches req.userId
+    routes/auth.js          register/login/logout/me
+    routes/products.js      CRUD + bulk + archive/restore, all scoped to req.userId
+    utils/auth.js           Password hashing (scrypt) + signed session tokens
+    utils/expiry.js         Expiry date calculation & status logic
 frontend/
   src/
-    api/client.ts       Typed fetch wrapper for the API
-    components/         Reusable UI (forms, tables, charts, layout)
-    context/            Theme + Products React contexts
-    lib/                CSV/PDF export helpers, date/status utilities
-    pages/              Dashboard, Products, Calendar, Reports, Analytics, Bulk Entry, Archive
+    api/client.ts, api/auth.ts   Typed fetch wrappers for the API
+    components/             Reusable UI (forms, tables, charts, layout)
+    context/                Theme + Auth + Products React contexts
+    lib/                    CSV/PDF export helpers, date/status utilities
+    pages/                  Login, Register, Dashboard, Products, Calendar, Reports, Analytics, Bulk Entry, Archive
 ```
 
 ## Roadmap / Not Implemented
@@ -104,6 +117,7 @@ The original spec included a number of larger subsystems intentionally left out 
 - Barcode/QR scanning and OCR label scanning
 - Natural-language AI assistant ("which products expire next week?")
 - Email / push / WhatsApp notifications (currently status is visual-only in the UI)
-- Multi-user accounts with role-based permissions (Admin/Staff/Viewer) and an audit log
+- Role-based permissions (Admin/Staff/Viewer) and an audit log within an account (today it's one flat user → their own products)
+- Password reset / email verification flow
 - Offline mode with background sync, and PWA installability
 - Native mobile/desktop packaging

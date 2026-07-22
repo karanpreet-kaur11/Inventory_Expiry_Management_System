@@ -9,8 +9,17 @@ export const db = new Database(dbPath);
 db.pragma('journal_mode = WAL');
 
 db.exec(`
+  CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    email TEXT NOT NULL UNIQUE,
+    passwordHash TEXT NOT NULL,
+    name TEXT,
+    createdAt TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
   CREATE TABLE IF NOT EXISTS products (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    userId INTEGER NOT NULL REFERENCES users(id),
     name TEXT NOT NULL,
     category TEXT NOT NULL DEFAULT 'Other',
     batchNumber TEXT,
@@ -26,4 +35,10 @@ db.exec(`
 
   CREATE INDEX IF NOT EXISTS idx_products_expiryDate ON products(expiryDate);
   CREATE INDEX IF NOT EXISTS idx_products_category ON products(category);
+  CREATE INDEX IF NOT EXISTS idx_products_userId ON products(userId);
 `);
+
+const productColumns = db.prepare("PRAGMA table_info(products)").all();
+if (!productColumns.some((c) => c.name === 'userId')) {
+  db.exec('ALTER TABLE products ADD COLUMN userId INTEGER');
+}

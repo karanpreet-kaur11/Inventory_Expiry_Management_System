@@ -33,12 +33,14 @@ router.get('/meta', (req, res) => {
 router.get('/', (req, res) => {
   const { archived } = req.query;
   const archivedFlag = archived === 'true' ? 1 : 0;
-  const rows = db.prepare('SELECT * FROM products WHERE archived = ? ORDER BY expiryDate ASC').all(archivedFlag);
+  const rows = db
+    .prepare('SELECT * FROM products WHERE userId = ? AND archived = ? ORDER BY expiryDate ASC')
+    .all(req.userId, archivedFlag);
   res.json(rows.map(serialize));
 });
 
 router.get('/:id', (req, res) => {
-  const row = db.prepare('SELECT * FROM products WHERE id = ?').get(req.params.id);
+  const row = db.prepare('SELECT * FROM products WHERE id = ? AND userId = ?').get(req.params.id, req.userId);
   if (!row) return res.status(404).json({ error: 'Product not found' });
   res.json(serialize(row));
 });
@@ -50,10 +52,10 @@ router.post('/', (req, res) => {
     const expiryDate = computeExpiryDate({ manufacturingDate, expiryType, expiryValue, expiryDate: exactDate });
 
     const stmt = db.prepare(`
-      INSERT INTO products (name, category, batchNumber, quantity, manufacturingDate, expiryType, expiryValue, expiryDate, updatedAt)
-      VALUES (@name, @category, @batchNumber, @quantity, @manufacturingDate, @expiryType, @expiryValue, @expiryDate, datetime('now'))
+      INSERT INTO products (userId, name, category, batchNumber, quantity, manufacturingDate, expiryType, expiryValue, expiryDate, updatedAt)
+      VALUES (@userId, @name, @category, @batchNumber, @quantity, @manufacturingDate, @expiryType, @expiryValue, @expiryDate, datetime('now'))
     `);
-    const info = stmt.run({ name: name.trim(), category, batchNumber, quantity, manufacturingDate, expiryType, expiryValue, expiryDate });
+    const info = stmt.run({ userId: req.userId, name: name.trim(), category, batchNumber, quantity, manufacturingDate, expiryType, expiryValue, expiryDate });
     const row = db.prepare('SELECT * FROM products WHERE id = ?').get(info.lastInsertRowid);
     res.status(201).json(serialize(row));
   } catch (err) {
@@ -67,8 +69,8 @@ router.post('/bulk', (req, res) => {
     return res.status(400).json({ error: 'items must be a non-empty array' });
   }
   const stmt = db.prepare(`
-    INSERT INTO products (name, category, batchNumber, quantity, manufacturingDate, expiryType, expiryValue, expiryDate, updatedAt)
-    VALUES (@name, @category, @batchNumber, @quantity, @manufacturingDate, @expiryType, @expiryValue, @expiryDate, datetime('now'))
+    INSERT INTO products (userId, name, category, batchNumber, quantity, manufacturingDate, expiryType, expiryValue, expiryDate, updatedAt)
+    VALUES (@userId, @name, @category, @batchNumber, @quantity, @manufacturingDate, @expiryType, @expiryValue, @expiryDate, datetime('now'))
   `);
 
   const created = [];
@@ -79,7 +81,7 @@ router.post('/bulk', (req, res) => {
         validatePayload(item);
         const { name, category = 'Other', batchNumber = null, quantity = null, manufacturingDate = null, expiryType, expiryValue = null, expiryDate: exactDate = null } = item;
         const expiryDate = computeExpiryDate({ manufacturingDate, expiryType, expiryValue, expiryDate: exactDate });
-        const info = stmt.run({ name: name.trim(), category, batchNumber, quantity, manufacturingDate, expiryType, expiryValue, expiryDate });
+        const info = stmt.run({ userId: req.userId, name: name.trim(), category, batchNumber, quantity, manufacturingDate, expiryType, expiryValue, expiryDate });
         created.push(serialize(db.prepare('SELECT * FROM products WHERE id = ?').get(info.lastInsertRowid)));
       } catch (err) {
         errors.push({ index: idx, error: err.message, item });
@@ -93,7 +95,7 @@ router.post('/bulk', (req, res) => {
 
 router.put('/:id', (req, res) => {
   try {
-    const existing = db.prepare('SELECT * FROM products WHERE id = ?').get(req.params.id);
+    const existing = db.prepare('SELECT * FROM products WHERE id = ? AND userId = ?').get(req.params.id, req.userId);
     if (!existing) return res.status(404).json({ error: 'Product not found' });
 
     validatePayload(req.body);
@@ -104,8 +106,8 @@ router.put('/:id', (req, res) => {
       UPDATE products SET name=@name, category=@category, batchNumber=@batchNumber, quantity=@quantity,
         manufacturingDate=@manufacturingDate, expiryType=@expiryType, expiryValue=@expiryValue, expiryDate=@expiryDate,
         updatedAt=datetime('now')
-      WHERE id=@id
-    `).run({ id: req.params.id, name: name.trim(), category, batchNumber, quantity, manufacturingDate, expiryType, expiryValue, expiryDate });
+      WHERE id=@id AND userId=@userId
+    `).run({ id: req.params.id, userId: req.userId, name: name.trim(), category, batchNumber, quantity, manufacturingDate, expiryType, expiryValue, expiryDate });
 
     const row = db.prepare('SELECT * FROM products WHERE id = ?').get(req.params.id);
     res.json(serialize(row));
@@ -115,30 +117,34 @@ router.put('/:id', (req, res) => {
 });
 
 router.post('/:id/duplicate', (req, res) => {
-  const existing = db.prepare('SELECT * FROM products WHERE id = ?').get(req.params.id);
+  const existing = db.prepare('SELECT * FROM products WHERE id = ? AND userId = ?').get(req.params.id, req.userId);
   if (!existing) return res.status(404).json({ error: 'Product not found' });
   const info = db.prepare(`
-    INSERT INTO products (name, category, batchNumber, quantity, manufacturingDate, expiryType, expiryValue, expiryDate, updatedAt)
-    VALUES (@name, @category, @batchNumber, @quantity, @manufacturingDate, @expiryType, @expiryValue, @expiryDate, datetime('now'))
+    INSERT INTO products (userId, name, category, batchNumber, quantity, manufacturingDate, expiryType, expiryValue, expiryDate, updatedAt)
+    VALUES (@userId, @name, @category, @batchNumber, @quantity, @manufacturingDate, @expiryType, @expiryValue, @expiryDate, datetime('now'))
   `).run({ ...existing, name: `${existing.name} (Copy)` });
   const row = db.prepare('SELECT * FROM products WHERE id = ?').get(info.lastInsertRowid);
   res.status(201).json(serialize(row));
 });
 
 router.post('/:id/archive', (req, res) => {
-  const info = db.prepare(`UPDATE products SET archived = 1, updatedAt = datetime('now') WHERE id = ?`).run(req.params.id);
+  const info = db
+    .prepare(`UPDATE products SET archived = 1, updatedAt = datetime('now') WHERE id = ? AND userId = ?`)
+    .run(req.params.id, req.userId);
   if (info.changes === 0) return res.status(404).json({ error: 'Product not found' });
   res.json(serialize(db.prepare('SELECT * FROM products WHERE id = ?').get(req.params.id)));
 });
 
 router.post('/:id/restore', (req, res) => {
-  const info = db.prepare(`UPDATE products SET archived = 0, updatedAt = datetime('now') WHERE id = ?`).run(req.params.id);
+  const info = db
+    .prepare(`UPDATE products SET archived = 0, updatedAt = datetime('now') WHERE id = ? AND userId = ?`)
+    .run(req.params.id, req.userId);
   if (info.changes === 0) return res.status(404).json({ error: 'Product not found' });
   res.json(serialize(db.prepare('SELECT * FROM products WHERE id = ?').get(req.params.id)));
 });
 
 router.delete('/:id', (req, res) => {
-  const info = db.prepare('DELETE FROM products WHERE id = ?').run(req.params.id);
+  const info = db.prepare('DELETE FROM products WHERE id = ? AND userId = ?').run(req.params.id, req.userId);
   if (info.changes === 0) return res.status(404).json({ error: 'Product not found' });
   res.status(204).end();
 });
